@@ -1,0 +1,6 @@
+{
+  "allow_hosts": ["localhost", "127.0.0.1", "::1"],
+  "allow_suffixes": [],
+  "extra_deny_suffixes": [],
+  "allow_private": false
+}

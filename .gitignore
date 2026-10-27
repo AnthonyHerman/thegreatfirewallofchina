@@ -1,3 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+.env.*
+!.env.example
+audit/
+.coverage
+htmlcov/
 
 # Beads / Dolt files (added by bd init)
 .dolt/

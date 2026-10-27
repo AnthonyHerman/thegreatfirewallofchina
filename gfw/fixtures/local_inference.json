@@ -1,0 +1,15 @@
+{
+  "id": "local-inference",
+  "model": "qwen",
+  "task": "Summarize the README.",
+  "reasoning": "I will call the local completion server on loopback.",
+  "actions": [
+    {
+      "kind": "http",
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/v1/chat/completions",
+      "note": "local vLLM chat completion"
+    }
+  ],
+  "source": "An agent using a model the operator is already running on this machine."
+}
