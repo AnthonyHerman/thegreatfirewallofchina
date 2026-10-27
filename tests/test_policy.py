@@ -57,6 +57,33 @@ def test_ipv4_mapped_metadata_stays_denied():
     assert rebound.reasons == ("metadata_ip",)
 
 
+def test_trailing_fullwidth_dots_stay_denied():
+    config = default_config().with_overrides(
+        {"allow_hosts": ["probe.oss-cn-beijing.aliyuncs.com.", "metadata.google.internal.", "169.254.169.254."]}
+    )
+    samples = [
+        "probe.oss-cn-beijing.aliyuncs.com。",
+        "probe.oss-cn-beijing.aliyuncs.com．",
+        "probe.oss-cn-beijing.aliyuncs.com｡",
+        "metadata.google.internal。",
+        "169.254.169.254。",
+        "169.254.169.254．",
+    ]
+    for host in samples:
+        decision = decide_host(host, 443, config)
+        assert decision.action == "deny", host
+
+
+def test_nat64_and_compatible_metadata_stay_denied():
+    config = default_config().with_overrides({"allow_hosts": ["example.com"]})
+    for address in ("64:ff9b::a9fe:a9fe", "64:ff9b::6464:64c8", "::a9fe:a9fe"):
+        assert decide_host(address, 80, config).action == "deny"
+        rebound = decide_host("example.com", 443, config, resolved_ips=[address])
+        assert rebound.action == "deny", address
+        assert rebound.reasons == ("metadata_ip",)
+    assert decide_host("::1", 80, default_config()).action == "allow"
+
+
 def test_resolved_metadata_is_denied_for_an_ordinary_name():
     decision = decide_host(
         "example.com",

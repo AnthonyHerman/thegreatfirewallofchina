@@ -95,21 +95,47 @@ def _ip(host: str) -> ipaddress._BaseAddress | None:
         return None
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
 def _unwrap(ip: ipaddress._BaseAddress) -> ipaddress._BaseAddress:
-    mapped = getattr(ip, "ipv4_mapped", None)
-    return mapped or ip
+    """Return the IPv4 address embedded in a mapped, NAT64, or compatible form."""
+    if isinstance(ip, ipaddress.IPv4Address):
+        return ip
+    mapped = ip.ipv4_mapped
+    if mapped is not None:
+        return mapped
+    if ip in _NAT64:
+        return ipaddress.IPv4Address(ip.packed[-4:])
+    # IPv4-compatible ::/96. Leave :: and ::1 as IPv6 so loopback stays loopback.
+    if ip.packed[:12] == bytes(12) and ip.packed[12:] not in (bytes(4), b"\x00\x00\x00\x01"):
+        return ipaddress.IPv4Address(ip.packed[12:])
+    return ip
+
+
+def _strip_trailing_dots(text: str) -> str:
+    # IDNA maps U+3002, U+FF0E, and U+FF61 onto an ASCII dot. Strip before and
+    # after encoding so a trailing one cannot survive as "aliyuncs.com.".
+    while text and text[-1] in ".。．｡":
+        text = text[:-1]
+    return text
 
 
 def normalize_host(host: str) -> str:
-    text = host.strip().lower().rstrip(".")
+    text = _strip_trailing_dots(host.strip().lower())
     if text.startswith("[") and text.endswith("]"):
         text = text[1:-1]
-    if _ip(text) is not None:
-        return str(_ip(text))
+    parsed = _ip(text)
+    if parsed is not None:
+        return str(parsed)
     try:
-        return text.encode("idna").decode("ascii")
+        encoded = _strip_trailing_dots(text.encode("idna").decode("ascii"))
     except UnicodeError as exc:
         raise ValueError("invalid host") from exc
+    parsed = _ip(encoded)
+    if parsed is not None:
+        return str(parsed)
+    return encoded
 
 
 def matches_suffix(host: str, suffix: str) -> bool:

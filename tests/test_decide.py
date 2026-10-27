@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from gfw.config import default_config
@@ -85,6 +86,33 @@ def test_confident_allow_can_lower_recon_only():
     trace = load_trace(FIXTURES / "recon_only.json")
     decision = evaluate(trace, default_config(), FakeJudge(allow_answer()))
     assert decision.action == "allow"
+
+
+def test_fullwidth_dot_on_oss_stays_a_static_block():
+    trace = {
+        "task": "Write a detection rule.",
+        "reasoning": "I will answer directly.",
+        "actions": [
+            {
+                "kind": "http",
+                "method": "PUT",
+                "url": "https://probe.oss-cn-beijing.aliyuncs.com。/probe.txt",
+            }
+        ],
+    }
+    decision = evaluate(trace, default_config(), FakeJudge(allow_answer()))
+    assert decision.action == "block"
+
+
+def test_nested_secret_shapes_do_not_reach_the_judge():
+    hyphen = "sk-" + ("q" * 20)
+    prefixed = "ak_" + ("r" * 20)
+    trace = {"task": "x", "actions": [], "headers": {prefixed: hyphen}}
+    judge = FakeJudge(allow_answer())
+    evaluate(trace, default_config(), judge)
+    blob = json.dumps(judge.states)
+    assert hyphen not in blob
+    assert prefixed not in blob
 
 
 def test_recon_stays_review_when_the_judge_is_down():

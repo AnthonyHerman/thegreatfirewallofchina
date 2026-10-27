@@ -44,6 +44,24 @@ def test_one_call_asks_every_question_and_parses_the_echoed_model():
     assert parsed["phone_home"] == 0.11
 
 
+def test_a_key_hidden_from_json_does_not_reach_the_opener():
+    quoted = 'pre"' + ("k" * 24)
+    marked = "tail" + ("n" * 20) + "é"
+
+    def opener(request, timeout):
+        raise AssertionError("opener was called")
+
+    for key in (quoted, marked):
+        client = JevClient(key, opener=opener)
+        try:
+            client.judge({"note": key})
+        except JudgeError as exc:
+            assert "refusing" in str(exc)
+            assert key not in str(exc)
+        else:
+            raise AssertionError("expected JudgeError")
+
+
 def test_refuses_to_send_a_state_that_contains_the_key():
     client = JevClient("test-key", opener=canned)
     try:

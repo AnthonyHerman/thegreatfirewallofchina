@@ -43,6 +43,11 @@ parties and that agents already route around a refusal from one site.
   actions. That signal is a review on its own, and a block when it is
   paired with a denied destination.
 - A raw IP that was not allowlisted, so the suffix list cannot be skipped.
+- The same destination written with a trailing ideographic or fullwidth
+  dot, or with its metadata address embedded in `::ffff:0:0/96`,
+  `64:ff9b::/96`, or an IPv4-compatible `::/96` form.
+- A second DNS answer. The proxy connects to the addresses it already
+  checked and keeps the original name only on the Host header.
 
 The destination list is the cloud APIs and object stores those vendors
 publish. It is not a ban on `.cn`, and it is not a ban on CDN edges.

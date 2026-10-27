@@ -2,7 +2,9 @@
 
 Only an allow decision is dialed. A deny is rejected without a connection.
 A review destination is rejected unless the decider returns allow, and that
-allow is checked again after DNS resolution. A decider exception is a block.
+allow is checked again after DNS resolution. The connection uses the
+addresses from that resolution, not a second lookup of the name. A decider
+exception is a block.
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ class Gate:
         again = decide_host(host, port, self.config, resolved_ips=ips)
         if again.action != "allow":
             return _blocked(reasons + again.reasons + ("resolved_destination",))
-        return Decision("allow", reasons + again.reasons, (), (), None)
+        return Decision("allow", reasons + again.reasons, (), (), None, dial=tuple(ips))
 
 
 def _blocked(reasons: tuple[str, ...]) -> Decision:
@@ -95,13 +97,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         except ValueError:
             port = 0
         decision = self.server.gate.check(host, port)
-        if decision.action != "allow":
-            self._reject(decision)
-            return
-        try:
-            remote = self.server.gate.connector((host, port), 10)
-        except OSError:
-            self._reject(Decision("block", ("dial_failed",), (), (), None))
+        remote = self._open_upstream(decision, port)
+        if remote is None:
             return
         try:
             self.send_response(200, "Connection Established")
@@ -123,16 +120,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _forward(self) -> None:
         host, port, path = _target(self.path, self.headers.get("Host", ""))
         decision = self.server.gate.check(host, port)
-        if decision.action != "allow":
-            self._reject(decision)
-            return
         length = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(length) if length else b""
         raw = _origin_request(self.command, path, self.headers, body)
-        try:
-            remote = self.server.gate.connector((host, port), 10)
-        except OSError:
-            self._reject(Decision("block", ("dial_failed",), (), (), None))
+        remote = self._open_upstream(decision, port)
+        if remote is None:
             return
         try:
             remote.sendall(raw)
@@ -143,6 +135,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
         finally:
             remote.close()
+
+    def _open_upstream(self, decision: Decision, port: int):
+        if decision.action != "allow" or not decision.dial:
+            if decision.action == "allow":
+                self._reject(Decision("block", ("unpinned_dial",), (), (), None))
+            else:
+                self._reject(decision)
+            return None
+        for ip in decision.dial:
+            try:
+                return self.server.gate.connector((ip, port), 10)
+            except OSError:
+                continue
+        self._reject(Decision("block", ("dial_failed",), (), (), None))
+        return None
 
     def _reject(self, decision: Decision) -> None:
         body = json.dumps(decision.to_dict()).encode("utf-8")

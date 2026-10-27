@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 
 from gfw.decide import Decision
-from gfw.redact import redact
+from gfw.redact import contains, redact
 from gfw.scan import redact_text
 
 API_URL = "https://api.abliteration.ai/v1/chat/completions"
@@ -88,9 +88,9 @@ class Analyst:
         self.opener = opener
 
     def _request(self, url: str, body: dict | None) -> dict:
-        data = None if body is None else json.dumps(body).encode("utf-8")
-        if data is not None and self.api_key and self.api_key in data.decode("utf-8"):
+        if body is not None and contains(body, self.api_key):
             raise AnalystError("refusing to send a request that contains the API key")
+        data = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             url,
             data=data,
@@ -116,6 +116,8 @@ class Analyst:
 
     def request_body(self, trace: dict, decision: Decision) -> dict:
         payload = redact({"trace": trace, "decision": decision.to_dict()})
+        if contains(payload, self.api_key):
+            raise AnalystError("refusing to send a request that contains the API key")
         return {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -132,8 +134,8 @@ class Analyst:
             return {"skipped": "no_key"}
         try:
             remaining = self.credits_remaining()
-        except AnalystError as exc:
-            return {"skipped": "balance_unavailable", "detail": str(exc)}
+        except AnalystError:
+            return {"skipped": "balance_unavailable", "detail": "AnalystError"}
         if remaining < self.min_balance:
             return {"skipped": "balance", "remaining_usd": remaining}
         body = self.request_body(trace, decision)

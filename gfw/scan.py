@@ -14,7 +14,7 @@ SECRET = re.compile(
     r"bearer\s+[A-Za-z0-9\-._~+/]{16,}"
     r"|ak_[A-Za-z0-9]{16,}"
     r"|apik[A-Za-z0-9_\-]{16,}"
-    r"|(?:sk|gho|ghp|github_pat)_[A-Za-z0-9_\-]{16,}"
+    r"|(?:sk|gho|ghp|github_pat)[_-][A-Za-z0-9_\-]{16,}"
     r")"
 )
 

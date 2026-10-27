@@ -1,6 +1,6 @@
 import json
 
-from gfw.analyst import Analyst, looks_like_evasion, remaining_credits
+from gfw.analyst import Analyst, AnalystError, looks_like_evasion, remaining_credits
 from gfw.decide import Decision
 
 
@@ -32,6 +32,49 @@ def test_balance_floor_skips_the_completion():
     result = analyst.explain({"task": "t"}, decision("block"))
     assert result["skipped"] == "balance"
     assert len(calls) == 1
+
+
+def test_nested_secret_and_hidden_key_do_not_leave_the_process(tmp_path):
+    from gfw.audit import write_audit
+    from gfw.redact import redact
+
+    hyphen = "sk-" + ("p" * 20)
+    cleaned = redact({hyphen: {"inner": hyphen}})
+    assert hyphen not in json.dumps(cleaned)
+    path = tmp_path / "audit.jsonl"
+    write_audit(str(path), {hyphen: hyphen})
+    assert hyphen not in path.read_text(encoding="utf-8")
+
+    analyst = Analyst("ak_" + ("t" * 20), "m", min_balance=5)
+    body = analyst.request_body({hyphen: hyphen}, decision("block"))
+    assert hyphen not in json.dumps(body)
+
+    hidden = 'pre"' + ("k" * 24)
+    marked = "tail" + ("n" * 20) + "é"
+
+    def opener(request, timeout):
+        raise AssertionError("opener was called")
+
+    for key in (hidden, marked):
+        guarded = Analyst(key, "m", min_balance=5, opener=opener)
+        try:
+            guarded.request_body({"note": key}, decision("block"))
+        except AnalystError as exc:
+            assert key not in str(exc)
+        else:
+            raise AssertionError("expected AnalystError")
+
+
+def test_analyst_error_text_is_not_stored():
+    secret = "sk-" + ("u" * 20)
+
+    def opener(request, timeout):
+        raise AnalystError("upstream said " + secret)
+
+    analyst = Analyst("ak_" + ("v" * 20), "m", min_balance=5, opener=opener)
+    result = analyst.explain({"task": "t"}, decision("block"))
+    assert secret not in json.dumps(result)
+    assert result["detail"] == "AnalystError"
 
 
 def test_allow_does_not_call_the_api():

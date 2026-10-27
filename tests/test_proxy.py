@@ -113,6 +113,60 @@ def test_proxy_forwards_loopback_and_rejects_connect(tmp_path):
         origin.server_close()
 
 
+def test_proxy_dials_the_checked_address_not_a_second_lookup(tmp_path):
+    calls = {"n": 0}
+    seen = []
+    held = []
+
+    def resolver(host, port):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ["127.0.0.1"]
+        return ["169.254.169.254"]
+
+    def connector(address, timeout):
+        seen.append(address)
+        local, remote = socket.socketpair()
+        held.append(remote)
+        return local
+
+    cfg = replace(
+        default_config(),
+        allow_hosts=frozenset({"example.com", "localhost", "127.0.0.1", "::1"}),
+        audit_path=str(tmp_path / "audit.jsonl"),
+    )
+    proxy = ProxyServer(("127.0.0.1", 0), Gate(cfg, resolver=resolver, connector=connector))
+    serve(proxy)
+    try:
+        port = proxy.server_address[1]
+        sock = socket.create_connection(("127.0.0.1", port), timeout=3)
+        sock.sendall(
+            b"GET http://example.com:9/secret HTTP/1.1\r\n"
+            b"Host: example.com:9\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        for _ in range(50):
+            if held:
+                break
+            sock.settimeout(0.05)
+            try:
+                sock.recv(1)
+            except TimeoutError:
+                pass
+        assert seen == [("127.0.0.1", 9)]
+        assert calls["n"] == 1
+        upstream = held[0]
+        upstream.settimeout(2)
+        sent = upstream.recv(4096)
+        upstream.close()
+        assert b"Host: example.com:9" in sent
+        assert b"/secret" in sent
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        sock.close()
+
+
 def test_decider_allow_still_checks_resolution(tmp_path):
     def decider(host, port):
         return Decision("allow", ("jev:allow",), (), (), None)

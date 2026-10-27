@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
+from gfw.redact import contains
 from gfw.scan import redact_text
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
@@ -107,12 +108,11 @@ class JevClient:
 
     def judge(self, state: dict) -> dict:
         body = self.request_body(state)
-        encoded = json.dumps(body)
-        if self.api_key in encoded:
+        if contains(body, self.api_key):
             raise JudgeError("refusing to send a state that contains the API key")
         request = urllib.request.Request(
             self.url,
-            data=encoded.encode("utf-8"),
+            data=json.dumps(body).encode("utf-8"),
             method="POST",
             headers={
                 "Content-Type": "application/json",

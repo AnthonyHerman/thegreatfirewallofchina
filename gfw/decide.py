@@ -26,6 +26,7 @@ class Decision:
     signals: tuple[dict, ...]
     judge: dict | None
     analyst: dict | None = None
+    dial: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -35,6 +36,7 @@ class Decision:
             "signals": list(self.signals),
             "judge": self.judge,
             "analyst": self.analyst,
+            "dial": list(self.dial),
         }
 
 
